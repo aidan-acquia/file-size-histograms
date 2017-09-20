@@ -1,7 +1,6 @@
 # Built-ins
 import math
 import os
-import sys
 import argparse
 
 # 3rd party packages
@@ -11,7 +10,7 @@ from seaborn import distplot
 
 # Our stuff
 import file_sizes
-from remote_exec import remote_exec_module
+from remote_exec import remote_exec_module, spinner_collector
 
 # setup command line arguments
 argp = argparse.ArgumentParser(description="Gather information about file sizes on remote host")
@@ -29,12 +28,15 @@ gw = execnet.makegateway(ssh_spec)
 
 # execute the module and collect results
 res = []
-remote_exec_module(gw, file_sizes, send_item=args.d, callback=res.append)
+cb = spinner_collector(res.append, prefix="Scanning... ")
+remote_exec_module(gw, file_sizes, send_item=args.d, callback=cb)
+print "Done! Building data set object..."
 
 # create a dataset of the log10(file size values), and generate histogram
-sizes = (math.log(i[1], 10) for i in res)
+sizes = (math.log10(i[1]) if i[1] > 0 else 0 for i in res)
 dataset = Series(sizes, name="File sizes ({} on {})".format(args.d, args.HOST))
-hist = distplot(dataset, rug=True).get_figure()
+print "Done! Creating histogram from dataset..."
+hist = distplot(dataset).get_figure()
 
 # save histogram image
 output_file = args.o if args.o else '{}.png'.format(args.HOST)
@@ -42,4 +44,8 @@ hist.savefig(output_file)
 print "Histogram image saved to {}".format(output_file)
 
 # Output a few more data points
-print "Mean: {}\nMedian: {}\nLargest: {}".format(10**dataset.mean(), 10**dataset.median(), 10**dataset.max())
+print "File Size Stats (bytes):\n  Mean: {}\n  Median: {}\n  Largest: {}".format(
+	10**dataset.mean(), 
+	10**dataset.median(), 
+	10**dataset.max()
+)
